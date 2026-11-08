@@ -1,0 +1,814 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Contour Field</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: full-height instrument. Header with function inputs, plot stage that shrinks when the bottom drawer opens, tab bar pinned below. */
+:root{
+  --bg:#f2f5f7; --panel:#ffffff; --panel2:#e8eef2; --fg:#14232c; --muted:#556873; --line:#d0dae0;
+  --grid:#dfe7ec; --axis:#788b97; --accent:#0a5c8a; --accent-fg:#ffffff;
+  --lo:#9db1be; --hi:#0a4f9e;
+  --c1:#d9480f; --c2:#0b7a5a; --c3:#8b3fb0; --c4:#a86f00;
+  --err:#b42318; --scrim:rgba(242,245,247,.92);
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --math:'STIX Two Text','Cambria Math','Times New Roman',serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e171d; --panel:#15222a; --panel2:#1c2c36; --fg:#e3edf2; --muted:#8fa2ae; --line:#27393f;
+  --grid:#1a2a32; --axis:#62798a; --accent:#5cb8ee; --accent-fg:#06222f;
+  --lo:#4b6373; --hi:#7ccaf7;
+  --c1:#ff8a4d; --c2:#3fd0a0; --c3:#c98cf2; --c4:#e6c04a;
+  --err:#ff8b82; --scrim:rgba(14,23,29,.92); color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#0e171d; --panel:#15222a; --panel2:#1c2c36; --fg:#e3edf2; --muted:#8fa2ae; --line:#27393f;
+  --grid:#1a2a32; --axis:#62798a; --accent:#5cb8ee; --accent-fg:#06222f;
+  --lo:#4b6373; --hi:#7ccaf7;
+  --c1:#ff8a4d; --c2:#3fd0a0; --c3:#c98cf2; --c4:#e6c04a;
+  --err:#ff8b82; --scrim:rgba(14,23,29,.92); color-scheme:dark; }
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+button,input,select{font:inherit;color:inherit}
+.math{font-family:var(--math);font-style:italic;font-size:1.08em}
+.mono{font-family:var(--mono)}
+#app{height:100%;display:flex;flex-direction:column;min-height:0}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding-block:10px 8px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}
+.badge{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);padding:2px 8px;border-radius:4px}
+.fields{display:flex;flex-wrap:wrap;gap:8px 12px;flex:1;min-width:0;align-items:center}
+.fld{display:flex;align-items:center;gap:8px;min-width:0}
+.fld .lab{white-space:nowrap;color:var(--muted)}
+.fld input[type=text]{min-width:0;width:100%}
+.fields .fld.main{flex:1 1 220px}
+input[type=text],select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px;min-width:0}
+input[type=text]:focus-visible,select:focus-visible,button:focus-visible,input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input.bad{border-color:var(--err)}
+.err{color:var(--err);font-size:12.5px;min-height:0}
+.err:empty{display:none}
+#fieldErr{flex-basis:100%}
+button{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 11px}
+button:hover{border-color:var(--axis)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:500}
+button.ghost{background:transparent}
+
+/* stage */
+.stagewrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.plot{position:relative;flex:1;min-height:150px;overflow:hidden;margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;display:block}
+#cv:active{cursor:grabbing}
+.zoom{position:absolute;top:10px;right:max(12px,env(safe-area-inset-right,0px));display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.zoom button{background:var(--panel);min-width:34px;height:34px;padding:0 10px}
+.legend{position:absolute;top:10px;left:max(12px,env(safe-area-inset-left,0px));background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;display:flex;flex-direction:column;gap:4px;max-width:170px}
+.legend .bar{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--lo),var(--hi))}
+.legend .row{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);color:var(--muted)}
+.readout{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:8px;font-family:var(--mono);font-size:12px;color:var(--fg);background:var(--scrim);padding:3px 8px;border-radius:5px;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+.readout:empty{display:none}
+
+/* drawer */
+.drawer{flex:0 0 auto;height:0;overflow:hidden;background:var(--panel);border-top:1px solid var(--line);margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));transition:height .24s ease}
+.drawer.open{height:min(48vh,460px)}
+.dscroll{height:100%;overflow-y:auto;padding:12px max(16px,env(safe-area-inset-left,0px)) 18px}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.dhead h2{margin:0;font-size:15px;font-weight:600}
+.panel[hidden]{display:none}
+.curve{border:1px solid var(--line);border-left:4px solid var(--cc);border-radius:6px;padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.crow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.crow .fld{flex:1 1 200px}
+.crow.dom input[type=text]{width:84px}
+.chk{display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
+.presets{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.presets button{padding:3px 8px;font-size:12.5px;background:transparent;color:var(--muted)}
+.cres{font-family:var(--mono);font-size:13px;display:flex;flex-direction:column;gap:2px}
+.cres:empty{display:none}
+.cres .big{font-size:15px;font-weight:500;color:var(--fg)}
+.cres .sub{color:var(--muted);font-size:12.5px}
+.addrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:12.5px}
+
+/* tab bar */
+.tabbar{display:flex;gap:4px;border-top:1px solid var(--line);padding-block:6px max(6px,env(safe-area-inset-bottom,0px));margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px))}
+.tab{flex:1 1 0;border:0;border-bottom:3px solid transparent;border-radius:4px 4px 0 0;background:transparent;padding:8px 10px;font-weight:500;color:var(--muted)}
+.tab[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent);background:var(--panel2)}
+
+/* start overlay */
+#start{position:fixed;inset:0;z-index:20;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));overflow-y:auto}
+#start[hidden]{display:none}
+.startbox{width:min(780px,100%)}
+.startbox h1{margin:0 0 4px;font-size:clamp(26px,5vw,38px);font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.startbox p.lead{margin:0 0 20px;color:var(--muted);max-width:56ch}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.pick{text-align:left;padding:18px;border-radius:10px;background:var(--panel);display:flex;flex-direction:column;gap:8px;border:1px solid var(--line)}
+.pick:hover{border-color:var(--accent)}
+.pick .k{font-family:var(--mono);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+.pick .f{font-family:var(--math);font-style:italic;font-size:22px}
+.pick .d{color:var(--muted);font-size:13.5px}
+
+/* formulas */
+.chain{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px;padding:0;list-style:none;counter-reset:s}
+.chain li{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:13px}
+.chain li b{color:var(--accent);font-weight:600}
+.fgroup{margin:16px 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.fcard{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--bg);min-width:0}
+.fcard h3{margin:0 0 6px;font-size:14px;font-weight:600}
+.eq{font-family:var(--math);font-size:18px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px;margin-bottom:8px;overflow-x:auto;white-space:nowrap}
+.fcard ul{margin:0;padding-left:18px;color:var(--muted);font-size:13px}
+.fcard li{margin:2px 0}
+.fcard .lbl{font-size:12px;color:var(--fg);font-weight:600;margin:6px 0 2px}
+.fcard table{border-collapse:collapse;font-size:13px;margin-top:6px}
+.fcard td,.fcard th{border-bottom:1px solid var(--line);padding:3px 10px 3px 0;text-align:left;font-weight:400}
+.fcard th{color:var(--muted);font-size:12px}
+.ex{color:var(--fg)}
+
+@media (max-width:560px){
+  .zoom button{height:38px}
+  .legend{max-width:130px}
+  .drawer.open{height:min(46vh,460px)}
+  .top{gap:6px 10px;padding-block:8px 6px}
+  .fields .fld.main{flex-basis:100%}
+  .fld>.lab:not(.math){display:none}
+  .fields{gap:6px 10px}
+}
+@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+</style>
+
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <button id="changePlane" class="ghost" type="button">&larr; Plane</button>
+      <span id="modeBadge" class="badge">u–v plane</span>
+    </div>
+    <form id="fieldForm" class="fields" autocomplete="off">
+      <label class="fld main"><span class="lab math" id="labA">u(x, y) =</span><input id="inA" type="text" class="mono" spellcheck="false" autocapitalize="off"></label>
+      <label class="fld main" id="wrapB"><span class="lab math" id="labB">v(x, y) =</span><input id="inB" type="text" class="mono" spellcheck="false" autocapitalize="off"></label>
+      <label class="fld"><span class="lab">Example</span><select id="exSel" aria-label="Load an example field"></select></label>
+    </form>
+    <div id="fieldErr" class="err" role="status"></div>
+  </header>
+
+  <main class="stagewrap">
+    <div class="plot" id="plot">
+      <canvas id="cv" aria-label="Vector field plot. Drag to pan, scroll or pinch to zoom."></canvas>
+      <div class="legend" aria-hidden="true"><span id="legTitle" class="math">|w|</span><div class="bar"></div><div class="row"><span>0</span><span id="legMax">1</span></div></div>
+      <div class="zoom">
+        <button id="zin" type="button" aria-label="Zoom in">+</button>
+        <button id="zout" type="button" aria-label="Zoom out">&minus;</button>
+        <button id="zhome" type="button" aria-label="Reset view">Reset</button>
+        <button id="lenBtn" type="button" aria-pressed="false" title="Toggle arrow length between proportional to magnitude and equal">Length &prop; |w|</button>
+      </div>
+      <div class="readout" id="readout"></div>
+    </div>
+
+    <section class="drawer" id="drawer" aria-label="Curves, integrals and formulas">
+      <div class="dscroll">
+        <div class="dhead"><h2 id="dtitle">Curves</h2><button id="dclose" type="button" class="ghost">Close</button></div>
+
+        <div class="panel" id="panelCurves">
+          <div id="curveList"></div>
+          <div class="addrow">
+            <button id="addCurve" type="button">+ Add curve</button>
+            <span class="hint">Curves are drawn on the plane. The integral is &int; f dz along each curve, from its start to its end.</span>
+          </div>
+        </div>
+
+        <div class="panel" id="panelFormulas" hidden>
+          <ol class="chain" aria-label="Which formula to use">
+            <li><b>Open path</b> &rarr; parametrize, or use an antiderivative</li>
+            <li><b>Closed, nothing singular inside</b> &rarr; 0</li>
+            <li><b>Closed, 1/(z&minus;a)</b> &rarr; 2&pi;i&middot;f(a)</li>
+            <li><b>Closed, 1/(z&minus;a)<sup>n+1</sup></b> &rarr; 2&pi;i&middot;f<sup>(n)</sup>(a)/n!</li>
+          </ol>
+
+          <div class="fgroup">1 &middot; Simple curve, open path</div>
+          <div class="fgrid">
+            <div class="fcard">
+              <h3>Parametrization</h3>
+              <div class="eq">&int;<sub>C</sub> f(z) dz = &int;<sub>a</sub><sup>b</sup> f(z(t)) &middot; z&prime;(t) dt</div>
+              <div class="lbl">Where z(t) = x(t) + i&middot;y(t)</div>
+              <ul><li>C is piecewise smooth and f is continuous on C.</li><li>Direction matters: reversing the path flips the sign.</li><li>The Calculate button uses this formula.</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Antiderivative shortcut</h3>
+              <div class="eq">&int;<sub>C</sub> f(z) dz = F(z<sub>2</sub>) &minus; F(z<sub>1</sub>)</div>
+              <ul><li>F&prime; = f, and f is analytic on a region that contains C.</li><li>Only the end points count, the route does not.</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Circle around a</h3>
+              <div class="eq">z = a + r e<sup>it</sup>, &nbsp;dz = i r e<sup>it</sup> dt, &nbsp;0 &le; t &le; 2&pi;</div>
+              <ul><li>Counterclockwise for increasing t.</li><li>In the curve panel: x = a<sub>x</sub> + r&middot;cos(t), y = a<sub>y</sub> + r&middot;sin(t).</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Size estimate (ML bound)</h3>
+              <div class="eq">|&int;<sub>C</sub> f dz| &le; M &middot; L</div>
+              <ul><li>M = largest |f| on C, L = length of C.</li><li>Useful as a sanity check on a computed value.</li></ul>
+            </div>
+          </div>
+
+          <div class="fgroup">2 &middot; Closed curve</div>
+          <div class="fgrid">
+            <div class="fcard">
+              <h3>Cauchy&ndash;Goursat</h3>
+              <div class="eq">&#8750;<sub>C</sub> f(z) dz = 0</div>
+              <ul><li>C is a simple closed curve.</li><li>f is analytic on C and everywhere inside it, with no singular point.</li><li>A singularity outside C changes nothing, the answer is still 0.</li></ul>
+            </div>
+          </div>
+
+          <div class="fgroup">3 &middot; Closed curve with a singularity</div>
+          <div class="fgrid">
+            <div class="fcard">
+              <h3>Cauchy integral formula</h3>
+              <div class="eq">&#8750;<sub>C</sub> <span style="display:inline-block;vertical-align:middle;text-align:center">f(z)<hr style="margin:1px 0;border:0;border-top:1px solid currentColor">z &minus; a</span> dz = 2&pi;i &middot; f(a)</div>
+              <ul><li>C is simple, closed and counterclockwise (clockwise gives &minus;2&pi;i&middot;f(a)).</li><li>a lies strictly inside C. If a is outside, the result is 0.</li><li>f is analytic on and inside C.</li></ul>
+              <div class="lbl">Recipe</div>
+              <ul><li>Find the bad point a, strip off the 1/(z&minus;a) factor, evaluate what is left at a.</li><li class="ex">Example: &#8750; e<sup>z</sup>/(z&minus;1) dz around 1 = 2&pi;i&middot;e.</li></ul>
+            </div>
+          </div>
+
+          <div class="fgroup">4 &middot; Denominator in a power</div>
+          <div class="fgrid">
+            <div class="fcard">
+              <h3>Generalized Cauchy formula</h3>
+              <div class="eq">&#8750;<sub>C</sub> <span style="display:inline-block;vertical-align:middle;text-align:center">f(z)<hr style="margin:1px 0;border:0;border-top:1px solid currentColor">(z &minus; a)<sup>n+1</sup></span> dz = <span style="display:inline-block;vertical-align:middle;text-align:center">2&pi;i<hr style="margin:1px 0;border:0;border-top:1px solid currentColor">n!</span> f<sup>(n)</sup>(a)</div>
+              <ul><li>Same conditions as above: simple, closed, counterclockwise, a inside, f analytic on and inside C.</li><li>n is a whole number, one less than the power in the denominator.</li></ul>
+              <table>
+                <tr><th>Denominator</th><th>n</th><th>Result</th></tr>
+                <tr><td>(z&minus;a)</td><td>0</td><td>2&pi;i&middot;f(a)</td></tr>
+                <tr><td>(z&minus;a)<sup>2</sup></td><td>1</td><td>2&pi;i&middot;f&prime;(a)</td></tr>
+                <tr><td>(z&minus;a)<sup>3</sup></td><td>2</td><td>2&pi;i&middot;f&Prime;(a)/2</td></tr>
+                <tr><td>(z&minus;a)<sup>4</sup></td><td>3</td><td>2&pi;i&middot;f&prime;&prime;&prime;(a)/6</td></tr>
+              </table>
+              <ul><li class="ex">Example: &#8750; cos z / z<sup>3</sup> dz around 0 = &minus;&pi;i.</li></ul>
+            </div>
+          </div>
+
+          <div class="fgroup">Toolbox</div>
+          <div class="fgrid">
+            <div class="fcard">
+              <h3>Standard power integral</h3>
+              <div class="eq">&#8750;<sub>|z&minus;a|=r</sub> (z &minus; a)<sup>m</sup> dz = 2&pi;i if m = &minus;1, otherwise 0</div>
+              <ul><li>m is any whole number, circle traversed counterclockwise.</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Split into real integrals</h3>
+              <div class="eq">&int; w dz = &int; (u dx &minus; v dy) + i &int; (v dx + u dy)</div>
+              <ul><li>w = u + i&middot;v and dz = dx + i&middot;dy.</li><li>The calculator reports these as the real and imaginary parts.</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Is the field analytic?</h3>
+              <div class="eq">u<sub>x</sub> = v<sub>y</sub>, &nbsp; u<sub>y</sub> = &minus;v<sub>x</sub></div>
+              <ul><li>Cauchy&ndash;Riemann equations, with continuous partial derivatives.</li><li>If they hold everywhere inside a closed C, the closed integral is 0.</li></ul>
+            </div>
+            <div class="fcard">
+              <h3>Reading the arrows</h3>
+              <div class="eq">r = &radic;(u&sup2; + v&sup2;), &nbsp;&theta; = atan2(v, u)</div>
+              <ul><li>Each arrow points at angle &theta; and its length follows r.</li><li>Colour darkens as r grows.</li></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" role="tablist" aria-label="Panels">
+    <button class="tab" role="tab" id="tabCurves" data-tab="curves" aria-selected="false" aria-controls="drawer">Curves &amp; integral</button>
+    <button class="tab" role="tab" id="tabFormulas" data-tab="formulas" aria-selected="false" aria-controls="drawer">Formulas</button>
+  </nav>
+</div>
+
+<div id="start">
+  <div class="startbox">
+    <h1>Contour Field</h1>
+    <p class="lead">Draw a complex vector field, trace curves across it, and integrate along them. Choose the plane to start.</p>
+    <div class="cards">
+      <button class="pick" type="button" data-mode="uv">
+        <span class="k">u–v plane</span>
+        <span class="f">w = u(x, y) + i&middot;v(x, y)</span>
+        <span class="d">Enter the two real components. Each arrow points along (u, v) with length from &radic;(u&sup2; + v&sup2;).</span>
+      </button>
+      <button class="pick" type="button" data-mode="xy">
+        <span class="k">x–y plane</span>
+        <span class="f">f(z), &nbsp;z = x + i&middot;y</span>
+        <span class="d">Enter one complex function of x and y (or z). The default field is z itself.</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+
+/* ================= complex arithmetic ================= */
+const cadd=(a,b)=>[a[0]+b[0],a[1]+b[1]];
+const csub=(a,b)=>[a[0]-b[0],a[1]-b[1]];
+const cmul=(a,b)=>[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
+function cdiv(a,b){ if(b[1]===0) return [a[0]/b[0],a[1]/b[0]]; const d=b[0]*b[0]+b[1]*b[1]; return [(a[0]*b[0]+a[1]*b[1])/d,(a[1]*b[0]-a[0]*b[1])/d]; }
+const cexp=a=>{const e=Math.exp(a[0]); return a[1]===0?[e,0]:[e*Math.cos(a[1]),e*Math.sin(a[1])];};
+const clog=a=>[Math.log(Math.hypot(a[0],a[1])),Math.atan2(a[1],a[0])];
+function csqrt(a){ const r=Math.hypot(a[0],a[1]); if(a[1]===0) return a[0]>=0?[Math.sqrt(a[0]),0]:[0,Math.sqrt(-a[0])]; const re=Math.sqrt((r+a[0])/2); const im=Math.sqrt(Math.max(0,(r-a[0])/2)); return [re,a[1]<0?-im:im]; }
+function cpow(a,b){
+  if(b[1]===0){
+    const n=b[0];
+    if(Number.isInteger(n) && Math.abs(n)<=64){
+      let r=[1,0], base=a, k=Math.abs(n);
+      while(k>0){ if(k&1) r=cmul(r,base); base=cmul(base,base); k>>=1; }
+      return n<0?cdiv([1,0],r):r;
+    }
+    if(a[1]===0 && a[0]>0) return [Math.pow(a[0],n),0];
+  }
+  if(a[0]===0 && a[1]===0) return b[0]>0?[0,0]:[NaN,NaN];
+  return cexp(cmul(b,clog(a)));
+}
+const csin=a=>a[1]===0?[Math.sin(a[0]),0]:[Math.sin(a[0])*Math.cosh(a[1]),Math.cos(a[0])*Math.sinh(a[1])];
+const ccos=a=>a[1]===0?[Math.cos(a[0]),0]:[Math.cos(a[0])*Math.cosh(a[1]),-Math.sin(a[0])*Math.sinh(a[1])];
+const csinh=a=>a[1]===0?[Math.sinh(a[0]),0]:[Math.sinh(a[0])*Math.cos(a[1]),Math.cosh(a[0])*Math.sin(a[1])];
+const ccosh=a=>a[1]===0?[Math.cosh(a[0]),0]:[Math.cosh(a[0])*Math.cos(a[1]),Math.sinh(a[0])*Math.sin(a[1])];
+const I=[0,1];
+function casin(a){ if(a[1]===0&&Math.abs(a[0])<=1) return [Math.asin(a[0]),0]; const w=clog(cadd(cmul(I,a),csqrt(csub([1,0],cmul(a,a))))); return [w[1],-w[0]]; }
+function cacos(a){ if(a[1]===0&&Math.abs(a[0])<=1) return [Math.acos(a[0]),0]; const s=casin(a); return [Math.PI/2-s[0],-s[1]]; }
+function catan(a){ if(a[1]===0) return [Math.atan(a[0]),0]; const w=clog(cdiv(cadd(I,a),csub(I,a))); return cmul([0,.5],w); }
+const FUNCS={
+  sin:csin, cos:ccos, tan:a=>cdiv(csin(a),ccos(a)), sinh:csinh, cosh:ccosh, tanh:a=>cdiv(csinh(a),ccosh(a)),
+  asin:casin, acos:cacos, atan:catan, exp:cexp, log:clog, ln:clog, log10:a=>cdiv(clog(a),[Math.LN10,0]),
+  sqrt:csqrt, cbrt:a=>a[1]===0?[Math.cbrt(a[0]),0]:cpow(a,[1/3,0]),
+  abs:a=>[Math.hypot(a[0],a[1]),0], arg:a=>[Math.atan2(a[1],a[0]),0], re:a=>[a[0],0], im:a=>[a[1],0], conj:a=>[a[0],-a[1]]
+};
+const CONSTS={pi:[Math.PI,0], e:[Math.E,0], i:[0,1]};
+
+/* ================= expression compiler ================= */
+function tokenize(s){
+  const toks=[]; let i=0;
+  while(i<s.length){
+    const ch=s[i];
+    if(/\s/.test(ch)){ i++; continue; }
+    if(/[0-9.]/.test(ch)){
+      const m=/^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(s.slice(i));
+      if(!m) throw new Error('Bad number near "'+s.slice(i,i+4)+'"');
+      toks.push({t:'num',v:parseFloat(m[0])}); i+=m[0].length; continue;
+    }
+    if(/^log10/.test(s.slice(i))){ toks.push({t:'id',v:'log10'}); i+=5; continue; }
+    if(/[A-Za-z_π]/.test(ch)){
+      const m=/^[A-Za-z_π]+/.exec(s.slice(i)); toks.push({t:'id',v:m[0]==='π'?'pi':m[0]}); i+=m[0].length; continue;
+    }
+    if('+-*/^(),'.includes(ch)){ toks.push({t:'op',v:ch}); i++; continue; }
+    if(ch==='×'||ch==='·'){ toks.push({t:'op',v:'*'}); i++; continue; }
+    if(ch==='−'){ toks.push({t:'op',v:'-'}); i++; continue; }
+    if(ch==='²'||ch==='³'){ toks.push({t:'op',v:'^'},{t:'num',v:ch==='²'?2:3}); i++; continue; }
+    throw new Error('Unexpected "'+ch+'"');
+  }
+  return toks;
+}
+function segment(name, known){
+  if(!name) return [];
+  for(let l=name.length;l>=1;l--){ const p=name.slice(0,l); if(known.has(p)){ const r=segment(name.slice(l),known); if(r) return [p,...r]; } }
+  return null;
+}
+const ENV={x:[0,0],y:[0,0],t:[0,0],z:[0,0]};
+function compile(src, vars){
+  if(!src || !src.trim()) throw new Error('Enter a function.');
+  const toks=tokenize(src); let pos=0;
+  const known=new Set([...vars,...Object.keys(CONSTS),...Object.keys(FUNCS)]);
+  const peek=()=>toks[pos], next=()=>toks[pos++];
+  const isOp=(t,v)=>t&&t.t==='op'&&t.v===v;
+  function expect(v){ const t=next(); if(!isOp(t,v)) throw new Error('Expected "'+v+'"'+(t?'':' (expression ends early)')); }
+  function expr(){
+    let l=term();
+    while(isOp(peek(),'+')||isOp(peek(),'-')){ const op=next().v; const r=term(); const a=l; l=op==='+'?(E=>cadd(a(E),r(E))):(E=>csub(a(E),r(E))); }
+    return l;
+  }
+  function startsPrimary(t){ return t&&(t.t==='num'||t.t==='id'||isOp(t,'(')); }
+  function term(){
+    let l=unary();
+    for(;;){
+      const t=peek();
+      if(isOp(t,'*')||isOp(t,'/')){ next(); const r=unary(); const a=l; l=t.v==='*'?(E=>cmul(a(E),r(E))):(E=>cdiv(a(E),r(E))); }
+      else if(startsPrimary(t)){ const r=unary(); const a=l; l=E=>cmul(a(E),r(E)); }
+      else break;
+    }
+    return l;
+  }
+  function unary(){
+    if(isOp(peek(),'-')){ next(); const a=unary(); return E=>{const v=a(E);return [-v[0],-v[1]];}; }
+    if(isOp(peek(),'+')){ next(); return unary(); }
+    return power();
+  }
+  function power(){
+    const b=primary();
+    if(isOp(peek(),'^')){ next(); const e=unary(); return E=>cpow(b(E),e(E)); }
+    return b;
+  }
+  function primary(){
+    const tk=next();
+    if(!tk) throw new Error('Expression ends early');
+    if(tk.t==='num'){ const c=[tk.v,0]; return ()=>c; }
+    if(isOp(tk,'(')){ const e=expr(); expect(')'); return e; }
+    if(tk.t==='id'){
+      let name=tk.v;
+      if(!known.has(name)){
+        const seg=segment(name,known);
+        if(!seg){
+          if(['x','y','z','t'].includes(name)) throw new Error('"'+name+'" is not available here');
+          throw new Error('Unknown name "'+name+'"');
+        }
+        toks.splice(pos-1,1,...seg.map(v=>({t:'id',v}))); pos--; return primary();
+      }
+      if(FUNCS[name]){
+        const fn=FUNCS[name]; let arg;
+        if(isOp(peek(),'(')){ next(); arg=expr(); expect(')'); } else arg=unary();
+        return E=>fn(arg(E));
+      }
+      if(CONSTS[name]){ const c=CONSTS[name]; return ()=>c; }
+      return E=>E[name];
+    }
+    throw new Error('Unexpected "'+tk.v+'"');
+  }
+  const f=expr();
+  if(pos<toks.length) throw new Error('Unexpected "'+toks[pos].v+'"');
+  return f;
+}
+function compileReal(src, vars){
+  const f=compile(src,vars);
+  return E=>{ const r=f(E); if(Math.abs(r[1])>1e-9*(1+Math.abs(r[0]))) return NaN; return r[0]; };
+}
+function evalConst(src){ const v=compileReal(src,[])(ENV); if(!Number.isFinite(v)) throw new Error('"'+src+'" is not a number'); return v; }
+
+/* ================= state ================= */
+const EXAMPLES={
+  uv:[['Swirl','-y','x'],['1/z  (pole at 0)','x/(x^2+y^2)','-y/(x^2+y^2)'],['z²','x^2-y^2','2*x*y'],['Sink','-x','-y'],['Saddle','x','-y'],['Waves','sin(y)','cos(x)']],
+  xy:[['z','x + i y'],['1/z  (pole at 0)','1/z'],['z²','z^2'],['e^z','e^z'],['1/(z²+1)','1/(z^2+1)'],['conj(z)','conj(z)'],['sin z','sin(z)']]
+};
+const state={
+  mode:'uv',
+  exprs:{uv:{a:'x/(x^2+y^2)',b:'-y/(x^2+y^2)'}, xy:{a:'x + i y'}},
+  field:null, view:{cx:0,cy:0,scale:0}, uniform:false, tab:null, nextId:1, curves:[], ref:1
+};
+const CURVE_COLORS=['--c1','--c2','--c3','--c4'];
+
+/* ================= canvas ================= */
+const cv=$('#cv'), ctx=cv.getContext('2d');
+let W=0,H=0,dpr=1, raf=0;
+function resize(){
+  const r=$('#plot').getBoundingClientRect(); dpr=Math.min(window.devicePixelRatio||1,3);
+  W=Math.max(1,Math.round(r.width)); H=Math.max(1,Math.round(r.height));
+  cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+  if(!state.view.scale){ state.view.scale=Math.min(W,H)/12; }
+  schedule();
+}
+function schedule(){ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; draw(); syncAutoDomains(); }); }
+function resetView(){ state.view.cx=0; state.view.cy=0; state.view.scale=Math.min(W,H)/12; schedule(); }
+function bounds(){ const v=state.view; return {xmin:v.cx-W/2/v.scale,xmax:v.cx+W/2/v.scale,ymin:v.cy-H/2/v.scale,ymax:v.cy+H/2/v.scale}; }
+function zoomAt(px,py,f){
+  const v=state.view; const wx=v.cx+(px-W/2)/v.scale, wy=v.cy-(py-H/2)/v.scale;
+  v.scale=Math.min(1e7,Math.max(1e-3,v.scale*f));
+  v.cx=wx-(px-W/2)/v.scale; v.cy=wy+(py-H/2)/v.scale; schedule();
+}
+function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function hex(c){ const m=/^#([0-9a-f]{6})$/i.exec(c); if(!m) return [128,128,128]; const n=parseInt(m[1],16); return [n>>16,(n>>8)&255,n&255]; }
+function niceStep(target){ const p=Math.pow(10,Math.floor(Math.log10(target))); const m=target/p; return (m<=1?1:m<=2?2:m<=5?5:10)*p; }
+function tick(v,g){ if(Math.abs(v)<g*1e-9) return '0'; if(Math.abs(v)>=1e6||g<1e-4) return v.toExponential(1); const dec=Math.max(0,-Math.floor(Math.log10(g)+1e-9)); return v.toFixed(dec).replace('-','−'); }
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const col={bg:css('--bg'),grid:css('--grid'),axis:css('--axis'),muted:css('--muted'),lo:hex(css('--lo')),hi:hex(css('--hi'))};
+  ctx.fillStyle=col.bg; ctx.fillRect(0,0,W,H);
+  const v=state.view, s=v.scale;
+  const X=x=>W/2+(x-v.cx)*s, Y=y=>H/2-(y-v.cy)*s;
+  const {xmin,xmax,ymin,ymax}=bounds();
+  const g=niceStep(64/s);
+  ctx.lineWidth=1; ctx.strokeStyle=col.grid; ctx.beginPath();
+  for(let k=Math.ceil(xmin/g);k<=Math.floor(xmax/g);k++){ const px=Math.round(X(k*g))+.5; ctx.moveTo(px,0); ctx.lineTo(px,H); }
+  for(let k=Math.ceil(ymin/g);k<=Math.floor(ymax/g);k++){ const py=Math.round(Y(k*g))+.5; ctx.moveTo(0,py); ctx.lineTo(W,py); }
+  ctx.stroke();
+  ctx.strokeStyle=col.axis; ctx.lineWidth=1.4; ctx.beginPath();
+  if(xmin<=0&&xmax>=0){ const px=Math.round(X(0))+.5; ctx.moveTo(px,0); ctx.lineTo(px,H); }
+  if(ymin<=0&&ymax>=0){ const py=Math.round(Y(0))+.5; ctx.moveTo(0,py); ctx.lineTo(W,py); }
+  ctx.stroke();
+  ctx.fillStyle=col.muted; ctx.font='11px '+css('--mono');
+  const ay=Math.min(H-6,Math.max(14,Y(0)+13)), ax=Math.min(W-6,Math.max(6,X(0)+5));
+  ctx.textAlign='center';
+  for(let k=Math.ceil(xmin/g);k<=Math.floor(xmax/g);k++){ if(k===0) continue; ctx.fillText(tick(k*g,g),X(k*g),ay); }
+  ctx.textAlign=ax>W-40?'right':'left';
+  for(let k=Math.ceil(ymin/g);k<=Math.floor(ymax/g);k++){ if(k===0) continue; ctx.fillText(tick(k*g,g),ax,Y(k*g)+4); }
+  ctx.textAlign='left'; ctx.font='italic 14px '+css('--math');
+  ctx.fillText('x',W-16,Math.min(H-24,Math.max(14,Y(0)-8)));
+  ctx.fillText('y',Math.min(W-14,Math.max(8,X(0)+8)),16);
+  drawField(X,Y,xmin,xmax,ymin,ymax,col);
+  state.curves.forEach(c=>drawCurve(c,X,Y));
+}
+
+
+function drawField(X,Y,xmin,xmax,ymin,ymax,col){
+  const fld=state.field, s=state.view.scale;
+  if(!fld){ $('#legMax').textContent='–'; return; }
+  const h=niceStep(30/s), cell=h*s, maxLen=cell*0.82;
+  const pts=[];
+  for(let i=Math.floor(xmin/h);i<=Math.ceil(xmax/h);i++){
+    for(let j=Math.floor(ymin/h);j<=Math.ceil(ymax/h);j++){
+      const x=i*h, y=j*h, w=fld(x,y);
+      if(w && Number.isFinite(w[0]) && Number.isFinite(w[1])) pts.push([x,y,w[0],w[1],Math.hypot(w[0],w[1])]);
+    }
+  }
+  const ms=pts.map(p=>p[4]).sort((a,b)=>a-b);
+  let ref=ms.length?ms[Math.min(ms.length-1,Math.floor(ms.length*0.9))]:1; if(!(ref>0)) ref=ms.length&&ms[ms.length-1]>0?ms[ms.length-1]:1;
+  state.ref=ref; $('#legMax').textContent=Number(ref.toPrecision(3)).toString();
+  ctx.lineWidth=1.4; ctx.lineCap='round';
+  for(const [x,y,u,v,m] of pts){
+    const px=X(x), py=Y(y);
+    if(px<-20||px>W+20||py<-20||py>H+20) continue;
+    const t=Math.min(1,m/ref), tc=Math.sqrt(t);
+    const r=Math.round(col.lo[0]+(col.hi[0]-col.lo[0])*tc), g=Math.round(col.lo[1]+(col.hi[1]-col.lo[1])*tc), b=Math.round(col.lo[2]+(col.hi[2]-col.lo[2])*tc);
+    const c='rgb('+r+','+g+','+b+')';
+    if(m<=ref*1e-9){ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(px,py,1.6,0,6.2832); ctx.fill(); continue; }
+    const len=state.uniform?maxLen*0.7:Math.max(5,maxLen*Math.pow(t,0.6));
+    const dx=u/m, dy=-v/m;
+    const tx=px-dx*len/2, ty=py-dy*len/2, hx=px+dx*len/2, hy=py+dy*len/2;
+    const hs=Math.min(7,Math.max(3,len*0.34));
+    ctx.strokeStyle=c; ctx.fillStyle=c;
+    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx-dx*hs*0.6,hy-dy*hs*0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx-dx*hs-dy*hs*0.45,hy-dy*hs+dx*hs*0.45); ctx.lineTo(hx-dx*hs+dy*hs*0.45,hy-dy*hs-dx*hs*0.45); ctx.closePath(); ctx.fill();
+  }
+}
+
+/* ================= curves ================= */
+function curvePos(c){
+  if(c.type==='graph'){ const fy=c._fy; return t=>{ ENV.x=[t,0]; return [t,fy(ENV)]; }; }
+  const fx=c._fx, fy=c._fy; return t=>{ ENV.t=[t,0]; return [fx(ENV),fy(ENV)]; };
+}
+function curveReady(c){ return !c._err && c._fy && (c.type==='graph'||c._fx); }
+function domainOf(c){
+  if(c.auto){ const b=bounds(); return [b.xmin,b.xmax]; }
+  const a=evalConst(c.t0s), b=evalConst(c.t1s);
+  if(!(a<b)) throw new Error('The start of the range must be smaller than the end.');
+  return [a,b];
+}
+function drawCurve(c,X,Y){
+  if(!curveReady(c)) return;
+  let d; try{ d=domainOf(c); }catch(e){ return; }
+  const pos=curvePos(c), N=1600, [a,b]=d, color=css(c.color);
+  ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=2.4; ctx.lineJoin='round';
+  ctx.beginPath(); let pen=false, px=0,py=0;
+  const lim=1e5;
+  for(let k=0;k<=N;k++){
+    const t=a+(b-a)*k/N, p=pos(t);
+    if(!Number.isFinite(p[0])||!Number.isFinite(p[1])){ pen=false; continue; }
+    const sx=Math.max(-lim,Math.min(lim,X(p[0]))), sy=Math.max(-lim,Math.min(lim,Y(p[1])));
+    if(pen && Math.abs(sy-py)>H*1.5 && Math.abs(sx-px)<W*2 && c.type==='graph') pen=false;
+    if(!pen){ ctx.moveTo(sx,sy); pen=true; } else ctx.lineTo(sx,sy);
+    px=sx; py=sy;
+  }
+  ctx.stroke();
+  // orientation arrow at the middle of the parameter range
+  const tm=(a+b)/2, e=(b-a)*1e-3, p0=pos(tm-e), p1=pos(tm+e), pm=pos(tm);
+  if([...p0,...p1,...pm].every(Number.isFinite)){
+    const sx=X(pm[0]), sy=Y(pm[1]); let dx=X(p1[0])-X(p0[0]), dy=Y(p1[1])-Y(p0[1]); const n=Math.hypot(dx,dy);
+    if(n>0 && sx>-20&&sx<W+20&&sy>-20&&sy<H+20){ dx/=n; dy/=n; const z=9;
+      ctx.beginPath(); ctx.moveTo(sx+dx*z,sy+dy*z); ctx.lineTo(sx-dx*z*0.6-dy*z*0.7,sy-dy*z*0.6+dx*z*0.7); ctx.lineTo(sx-dx*z*0.6+dy*z*0.7,sy-dy*z*0.6-dx*z*0.7); ctx.closePath(); ctx.fill(); }
+  }
+}
+
+/* ---- integral ---- */
+const GLN=[0,-0.5384693101056831,0.5384693101056831,-0.9061798459386640,0.9061798459386640];
+const GLW=[0.5688888888888889,0.4786286704993665,0.4786286704993665,0.2369268850561891,0.2369268850561891];
+function integrate(c){
+  if(!state.field) throw new Error('Fix the field functions first.');
+  if(!curveReady(c)) throw new Error(c._err||'Enter the curve functions first.');
+  const [a,b]=domainOf(c), pos=curvePos(c), fld=state.field;
+  const dt=b-a, hh=dt*1e-5, N=600; let sr=0, si=0;
+  for(let p=0;p<N;p++){
+    const t0=a+p*dt/N, half=dt/N/2, mid=t0+half;
+    for(let k=0;k<5;k++){
+      const t=mid+half*GLN[k], P=pos(t), A=pos(t+hh), B=pos(t-hh), A2=pos(t+2*hh), B2=pos(t-2*hh);
+      const dx=(-A2[0]+8*A[0]-8*B[0]+B2[0])/(12*hh), dy=(-A2[1]+8*A[1]-8*B[1]+B2[1])/(12*hh);
+      const w=fld(P[0],P[1]);
+      if(!w) throw new Error('The field is undefined on the path.');
+      sr+=GLW[k]*half*(w[0]*dx-w[1]*dy); si+=GLW[k]*half*(w[0]*dy+w[1]*dx);
+    }
+  }
+  if(!Number.isFinite(sr)||!Number.isFinite(si)) throw new Error('The path touches a point where the field is undefined (a singularity), or the curve leaves its domain.');
+  const s0=pos(a), s1=pos(b); const scale=1+Math.abs(s0[0])+Math.abs(s0[1]);
+  const closed=Math.hypot(s1[0]-s0[0],s1[1]-s0[1])<1e-6*scale;
+  return {re:sr,im:si,closed,a,b};
+}
+const clean=v=>Math.abs(v)<1e-7?0:v;
+function fmt(v){ v=clean(v); if(v===0) return '0'; return Number(v.toPrecision(6)).toString().replace('-','−'); }
+function cstr(re,im){ re=clean(re); im=clean(im); if(im===0) return fmt(re); if(re===0) return fmt(im)+' i'; return fmt(re)+(im<0?' − ':' + ')+fmt(Math.abs(im))+' i'; }
+function piForm(re,im){
+  const part=(v,unit)=>{ v=clean(v); if(v===0) return null; const q=v/Math.PI, r=Math.round(q*4)/4; if(Math.abs(q-r)>1e-6) return null; const mag=Math.abs(r); const txt=(mag===1?'':String(mag))+'π'+unit; return (r<0?'−':'')+txt; };
+  const a=part(re,''), b=part(im,' i');
+  if((clean(re)!==0&&!a)||(clean(im)!==0&&!b)) return '';
+  if(a&&b) return a+(b.startsWith('−')?' − '+b.slice(1):' + '+b);
+  return a||b||'';
+}
+
+/* ---- curve cards ---- */
+const PRESETS={
+  circle:{type:'param',xs:'cos(t)',ys:'sin(t)',auto:false,t0s:'0',t1s:'2*pi'},
+  line:{type:'graph',xs:'',ys:'0.5*x+0.5',auto:true,t0s:'',t1s:''},
+  parab:{type:'graph',xs:'',ys:'x^2/4',auto:true,t0s:'',t1s:''}
+};
+function newCurve(p){
+  const id=state.nextId++;
+  const c=Object.assign({id,type:'param',xs:'',ys:'',auto:true,t0s:'',t1s:'',color:CURVE_COLORS[(id-1)%CURVE_COLORS.length],_fx:null,_fy:null,_err:''},p||{});
+  state.curves.push(c); compileCurve(c); return c;
+}
+function compileCurve(c){
+  c._err=''; c._fx=null; c._fy=null;
+  try{
+    if(c.type==='param'){ if(c.xs.trim()) c._fx=compileReal(c.xs,['t']); if(c.ys.trim()) c._fy=compileReal(c.ys,['t']); }
+    else if(c.ys.trim()) c._fy=compileReal(c.ys,['x']);
+  }catch(e){ c._err=e.message; }
+}
+const byId=id=>state.curves.find(c=>c.id===Number(id));
+function cardHtml(c){
+  const P=c.type==='param', n=c.id;
+  return '<article class="curve" data-id="'+n+'" style="--cc:var('+c.color+')">'+
+  '<div class="crow">'+
+    '<select class="ctype" id="c'+n+'-type" aria-label="Curve type"><option value="param"'+(P?' selected':'')+'>Parametric: x(t), y(t)</option><option value="graph"'+(!P?' selected':'')+'>Graph: y = f(x)</option></select>'+
+    '<span class="presets"><button type="button" data-p="circle">Unit circle</button><button type="button" data-p="line">Line</button><button type="button" data-p="parab">Parabola</button></span>'+
+    '<button type="button" class="rm ghost">Remove</button>'+
+  '</div>'+
+  '<div class="crow">'+
+    (P?'<label class="fld"><span class="lab math">x(t) =</span><input id="c'+n+'-x" class="cx mono" type="text" spellcheck="false" autocapitalize="off"></label>':'')+
+    '<label class="fld"><span class="lab math">'+(P?'y(t)':'y(x)')+' =</span><input id="c'+n+'-y" class="cy mono" type="text" spellcheck="false" autocapitalize="off"></label>'+
+  '</div>'+
+  '<div class="crow dom">'+
+    '<span class="lab math">'+(P?'t':'x')+' from</span><input id="c'+n+'-t0" class="t0 mono" type="text" spellcheck="false" autocapitalize="off" aria-label="Range start">'+
+    '<span class="lab">to</span><input id="c'+n+'-t1" class="t1 mono" type="text" spellcheck="false" autocapitalize="off" aria-label="Range end">'+
+    '<label class="chk"><input id="c'+n+'-auto" type="checkbox" class="auto">Visible region</label>'+
+    '<button type="button" class="calc primary">Calculate &int; f dz</button>'+
+  '</div>'+
+  '<div class="cerr err"></div><div class="cres" aria-live="polite"></div></article>';
+}
+function renderCurves(){
+  const list=$('#curveList'); list.innerHTML=state.curves.map(cardHtml).join('');
+  state.curves.forEach(c=>{
+    const card=list.querySelector('[data-id="'+c.id+'"]');
+    if(c.type==='param') card.querySelector('.cx').value=c.xs;
+    card.querySelector('.cy').value=c.ys;
+    card.querySelector('.auto').checked=c.auto;
+    card.querySelector('.t0').value=c.t0s; card.querySelector('.t1').value=c.t1s;
+    showCurveErr(c,card);
+  });
+  syncAutoDomains(); schedule();
+}
+function showCurveErr(c,card){ card=card||$('#curveList [data-id="'+c.id+'"]'); if(!card) return; card.querySelector('.cerr').textContent=c._err||''; }
+const fmtD=v=>Number(v.toPrecision(4)).toString();
+function syncAutoDomains(){
+  const b=bounds();
+  state.curves.forEach(c=>{
+    if(!c.auto) return;
+    const card=$('#curveList [data-id="'+c.id+'"]'); if(!card) return;
+    const t0=card.querySelector('.t0'), t1=card.querySelector('.t1');
+    t0.value=fmtD(b.xmin); t1.value=fmtD(b.xmax);
+  });
+}
+function clearResult(card){ card.querySelector('.cres').innerHTML=''; }
+const list=$('#curveList');
+list.addEventListener('input',e=>{
+  const card=e.target.closest('.curve'); if(!card) return; const c=byId(card.dataset.id), el=e.target;
+  if(el.classList.contains('cx')) c.xs=el.value;
+  else if(el.classList.contains('cy')) c.ys=el.value;
+  else if(el.classList.contains('t0')||el.classList.contains('t1')){
+    if(c.auto){ const b=bounds(); c.t0s=String(b.xmin); c.t1s=String(b.xmax); c.auto=false; card.querySelector('.auto').checked=false; }
+    if(el.classList.contains('t0')) c.t0s=el.value; else c.t1s=el.value;
+    el.classList.remove('bad');
+  } else return;
+  compileCurve(c); showCurveErr(c,card); clearResult(card); schedule();
+});
+list.addEventListener('change',e=>{
+  const card=e.target.closest('.curve'); if(!card) return; const c=byId(card.dataset.id), el=e.target;
+  if(el.classList.contains('ctype')){ c.type=el.value; if(c.type==='graph'){c.auto=true;} compileCurve(c); renderCurves(); }
+  else if(el.classList.contains('auto')){
+    c.auto=el.checked;
+    if(!c.auto){ const b=bounds(); c.t0s=String(Number(b.xmin.toPrecision(8))); c.t1s=String(Number(b.xmax.toPrecision(8))); card.querySelector('.t0').value=c.t0s; card.querySelector('.t1').value=c.t1s; }
+    clearResult(card); schedule();
+  }
+});
+list.addEventListener('click',e=>{
+  const card=e.target.closest('.curve'); if(!card) return; const c=byId(card.dataset.id), btn=e.target.closest('button'); if(!btn) return;
+  if(btn.classList.contains('rm')){ state.curves=state.curves.filter(k=>k!==c); renderCurves(); }
+  else if(btn.dataset.p){ Object.assign(c,PRESETS[btn.dataset.p]); compileCurve(c); renderCurves(); }
+  else if(btn.classList.contains('calc')){
+    const res=card.querySelector('.cres'); card.querySelector('.cerr').textContent='';
+    try{
+      const r=integrate(c); const pf=piForm(r.re,r.im);
+      let html='<span class="big">'+(state.mode==='uv'?'∫ w dz':'∫ f dz')+' = '+cstr(r.re,r.im)+'</span>';
+      if(pf) html+='<span class="sub">= '+pf+'</span>';
+      html+='<span class="sub">Re = ∫(u dx − v dy) = '+fmt(r.re)+' &nbsp; Im = ∫(v dx + u dy) = '+fmt(r.im)+'</span>';
+      html+='<span class="sub">|I| = '+fmt(Math.hypot(r.re,r.im))+' &nbsp; t from '+fmt(r.a)+' to '+fmt(r.b)+'</span>';
+      if(r.closed) html+='<span class="sub">Closed curve. ∮ / 2πi = '+cstr(r.im/(2*Math.PI),-r.re/(2*Math.PI))+'</span>'; else html+='<span class="sub">Open curve.</span>';
+      res.innerHTML=html;
+    }catch(err){ res.innerHTML=''; card.querySelector('.cerr').textContent=err.message; }
+  }
+});
+$('#addCurve').addEventListener('click',()=>{ const c=newCurve({type:'graph',ys:'',auto:true}); renderCurves(); const el=$('#c'+c.id+'-y'); if(el) el.focus(); });
+
+/* ================= field input ================= */
+function rebuildField(){
+  const err=$('#fieldErr'); err.textContent=''; $('#inA').classList.remove('bad'); $('#inB').classList.remove('bad');
+  const ex=state.exprs[state.mode]; state.field=null;
+  try{
+    if(state.mode==='uv'){
+      let U,V;
+      try{ U=compileReal(ex.a,['x','y']); }catch(e){ $('#inA').classList.add('bad'); throw new Error('u: '+e.message); }
+      try{ V=compileReal(ex.b,['x','y']); }catch(e){ $('#inB').classList.add('bad'); throw new Error('v: '+e.message); }
+      state.field=(x,y)=>{ ENV.x=[x,0]; ENV.y=[y,0]; const u=U(ENV), v=V(ENV); return (Number.isFinite(u)&&Number.isFinite(v))?[u,v]:null; };
+    } else {
+      let F; try{ F=compile(ex.a,['x','y','z']); }catch(e){ $('#inA').classList.add('bad'); throw e; }
+      state.field=(x,y)=>{ ENV.x=[x,0]; ENV.y=[y,0]; ENV.z=[x,y]; const r=F(ENV); return (Number.isFinite(r[0])&&Number.isFinite(r[1]))?r:null; };
+    }
+  }catch(e){ err.textContent=e.message; }
+  schedule();
+}
+let deb=0;
+$('#fieldForm').addEventListener('submit',e=>e.preventDefault());
+['#inA','#inB'].forEach(sel=>$(sel).addEventListener('input',()=>{
+  const ex=state.exprs[state.mode]; ex.a=$('#inA').value; if(state.mode==='uv') ex.b=$('#inB').value;
+  clearTimeout(deb); deb=setTimeout(()=>{ rebuildField(); $('#curveList').querySelectorAll('.cres').forEach(r=>r.innerHTML=''); },140);
+}));
+$('#exSel').addEventListener('change',e=>{
+  const i=e.target.value; if(i==='') return; const row=EXAMPLES[state.mode][Number(i)];
+  state.exprs[state.mode].a=row[1]; $('#inA').value=row[1];
+  if(state.mode==='uv'){ state.exprs.uv.b=row[2]; $('#inB').value=row[2]; }
+  e.target.value=''; rebuildField();
+});
+function applyMode(m){
+  state.mode=m; const uv=m==='uv', ex=state.exprs[m];
+  $('#modeBadge').textContent=uv?'u–v plane':'x–y plane';
+  $('#labA').textContent=uv?'u(x, y) =':'f(x, y) =';
+  $('#wrapB').hidden=!uv;
+  $('#inA').value=ex.a; $('#inB').value=uv?ex.b:'';
+  $('#legTitle').textContent=uv?'|w|':'|f|';
+  $('#lenBtn').innerHTML=state.uniform?'Equal length':(uv?'Length &prop; |w|':'Length &prop; |f|');
+  $('#exSel').innerHTML='<option value="">Load…</option>'+EXAMPLES[m].map((r,i)=>'<option value="'+i+'">'+r[0]+'</option>').join('');
+  rebuildField();
+}
+document.querySelectorAll('.pick').forEach(b=>b.addEventListener('click',()=>{ applyMode(b.dataset.mode); $('#start').hidden=true; $('#inA').focus({preventScroll:true}); schedule(); }));
+$('#changePlane').addEventListener('click',()=>{ $('#start').hidden=false; });
+
+/* ================= tabs ================= */
+function setTab(name){
+  state.tab=name;
+  $('#drawer').classList.toggle('open',!!name);
+  $('#panelCurves').hidden=name!=='curves'; $('#panelFormulas').hidden=name!=='formulas';
+  $('#dtitle').textContent=name==='formulas'?'Formulas and conditions':'Curves and integral';
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setTab(state.tab===t.dataset.tab?null:t.dataset.tab)));
+$('#dclose').addEventListener('click',()=>setTab(null));
+
+/* ================= interaction ================= */
+const ptrs=new Map();
+cv.addEventListener('pointerdown',e=>{ cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.offsetX,y:e.offsetY}); });
+function endPtr(e){ ptrs.delete(e.pointerId); }
+cv.addEventListener('pointerup',endPtr); cv.addEventListener('pointercancel',endPtr);
+cv.addEventListener('pointermove',e=>{
+  const nx=e.offsetX, ny=e.offsetY, p=ptrs.get(e.pointerId);
+  if(p){
+    const v=state.view;
+    if(ptrs.size===1){ v.cx-=(nx-p.x)/v.scale; v.cy+=(ny-p.y)/v.scale; schedule(); }
+    else if(ptrs.size===2){
+      const other=[...ptrs.entries()].find(([id])=>id!==e.pointerId)[1];
+      const od=Math.hypot(p.x-other.x,p.y-other.y), nd=Math.hypot(nx-other.x,ny-other.y);
+      if(od>0) zoomAt((nx+other.x)/2,(ny+other.y)/2,nd/od);
+    }
+    p.x=nx; p.y=ny;
+  }
+  hover(nx,ny);
+});
+cv.addEventListener('pointerleave',()=>{ if(!ptrs.size) $('#readout').textContent=''; });
+cv.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(e.offsetX,e.offsetY,Math.exp(-e.deltaY*(e.deltaMode===1?0.05:0.0015))); },{passive:false});
+function hover(px,py){
+  const v=state.view, x=v.cx+(px-W/2)/v.scale, y=v.cy-(py-H/2)/v.scale, uv=state.mode==='uv', nm=uv?'w':'f';
+  let txt='x = '+fmt(Number(x.toPrecision(4)))+'   y = '+fmt(Number(y.toPrecision(4)));
+  const w=state.field&&state.field(x,y);
+  if(w) txt+='   '+nm+' = '+cstr(Number(w[0].toPrecision(4)),Number(w[1].toPrecision(4)))+'   |'+nm+'| = '+fmt(Math.hypot(w[0],w[1]))+'   θ = '+fmt(Math.atan2(w[1],w[0])*180/Math.PI)+'°';
+  else if(state.field) txt+='   undefined here';
+  $('#readout').textContent=txt;
+}
+$('#zin').addEventListener('click',()=>zoomAt(W/2,H/2,1.35));
+$('#zout').addEventListener('click',()=>zoomAt(W/2,H/2,1/1.35));
+$('#zhome').addEventListener('click',resetView);
+$('#lenBtn').addEventListener('click',()=>{ state.uniform=!state.uniform; $('#lenBtn').setAttribute('aria-pressed',String(state.uniform)); $('#lenBtn').innerHTML=state.uniform?'Equal length':(state.mode==='uv'?'Length &prop; |w|':'Length &prop; |f|'); schedule(); });
+
+/* ================= boot ================= */
+new ResizeObserver(resize).observe($('#plot'));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',schedule);
+new MutationObserver(schedule).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(schedule);
+newCurve(PRESETS.circle);
+applyMode('uv'); renderCurves(); resize();
+window.__cf={state,compile,integrate,applyMode,setTab};
+})();
+</script>
+
+</body></html>
